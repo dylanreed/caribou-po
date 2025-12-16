@@ -29,14 +29,15 @@ interface Quote {
   totalCost: number | null
   shippingCost: number | null
   notes: string | null
-  supplier: { name: string } | null
+  supplier: { name: string; displayName: string | null } | null
+  purchaseOrder: { id: string; poNumber: string } | null
   lineItems: QuoteLineItem[]
 }
 
 export default function QuotesPage() {
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string; displayName: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -290,7 +291,7 @@ export default function QuotesPage() {
               >
                 <option value="">Select supplier</option>
                 {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>{s.displayName || s.name}</option>
                 ))}
               </select>
             </div>
@@ -469,6 +470,9 @@ export default function QuotesPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   PDF
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Linked PO
+                </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -477,11 +481,16 @@ export default function QuotesPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {quotes.map((quote) => (
                 <tr key={quote.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatDate(quote.quoteDate)}
-                    {quote.quoteNumber && (
-                      <span className="text-xs text-gray-500 ml-2">#{quote.quoteNumber}</span>
-                    )}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <Link
+                      href={`/quotes/${quote.id}`}
+                      className="text-gray-900 hover:text-maroon-800 font-medium"
+                    >
+                      {formatDate(quote.quoteDate)}
+                      {quote.quoteNumber && (
+                        <span className="text-xs text-gray-500 ml-2">#{quote.quoteNumber}</span>
+                      )}
+                    </Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
@@ -525,6 +534,18 @@ export default function QuotesPage() {
                       >
                         View PDF
                       </a>
+                    ) : (
+                      <span className="text-gray-400 text-sm">-</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {quote.purchaseOrder ? (
+                      <Link
+                        href={`/purchase-orders/${quote.purchaseOrder.id}`}
+                        className="text-maroon-800 hover:text-maroon-900 text-sm font-medium"
+                      >
+                        {quote.purchaseOrder.poNumber}
+                      </Link>
                     ) : (
                       <span className="text-gray-400 text-sm">-</span>
                     )}

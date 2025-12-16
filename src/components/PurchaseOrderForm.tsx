@@ -13,6 +13,7 @@ function formatImageUrl(url: string | null): string | null {
 interface Supplier {
   id: string
   name: string
+  displayName: string | null
 }
 
 interface EngravingArt {
@@ -61,6 +62,8 @@ function hasSteel(material: string | null | undefined): boolean {
 interface PurchaseOrderFormProps {
   initialData?: {
     id: string
+    poNumber: string
+    createdAt: string
     supplierId: string
     notes: string
     lineItems: LineItem[]
@@ -74,6 +77,8 @@ export function PurchaseOrderForm({ initialData }: PurchaseOrderFormProps) {
   const [colors, setColors] = useState<YoyoColor[]>([])
   const [saving, setSaving] = useState(false)
 
+  const [poNumber, setPoNumber] = useState(initialData?.poNumber || '')
+  const [createdAt, setCreatedAt] = useState(initialData?.createdAt ? initialData.createdAt.split('T')[0] : new Date().toISOString().split('T')[0])
   const [supplierId, setSupplierId] = useState(initialData?.supplierId || '')
   const [notes, setNotes] = useState(initialData?.notes || '')
   const [lineItems, setLineItems] = useState<LineItem[]>(
@@ -182,6 +187,8 @@ export function PurchaseOrderForm({ initialData }: PurchaseOrderFormProps) {
     setSaving(true)
 
     const data = {
+      poNumber: isEditing ? poNumber : undefined, // Only send poNumber when editing
+      createdAt: createdAt ? new Date(createdAt).toISOString() : undefined,
       supplierId,
       notes,
       lineItems: lineItems.map((item) => ({
@@ -198,22 +205,56 @@ export function PurchaseOrderForm({ initialData }: PurchaseOrderFormProps) {
       : '/api/purchase-orders'
     const method = isEditing ? 'PUT' : 'POST'
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
 
-    const po = await res.json()
-    router.push(`/purchase-orders/${po.id}`)
-    router.refresh()
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || 'Failed to save purchase order')
+      }
+
+      const po = await res.json()
+      router.push(`/purchase-orders/${po.id}`)
+      router.refresh()
+    } catch (error) {
+      setSaving(false)
+      alert(error instanceof Error ? error.message : 'Failed to save purchase order')
+    }
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="bg-white shadow rounded-lg p-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">Order Details</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {isEditing && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                PO Number
+              </label>
+              <input
+                type="text"
+                value={poNumber}
+                onChange={(e) => setPoNumber(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Order Date
+            </label>
+            <input
+              type="date"
+              value={createdAt}
+              onChange={(e) => setCreatedAt(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Supplier *
@@ -227,12 +268,12 @@ export function PurchaseOrderForm({ initialData }: PurchaseOrderFormProps) {
               <option value="">Select a supplier</option>
               {suppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
+                  {supplier.displayName || supplier.name}
                 </option>
               ))}
             </select>
           </div>
-          <div>
+          <div className={isEditing ? "" : "md:col-span-2"}>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Notes
             </label>

@@ -26,6 +26,7 @@ export async function PUT(
     where: { id: params.id },
     data: {
       name: body.name,
+      displayName: body.displayName || null,
       email: body.email || null,
       phone: body.phone || null,
       address: body.address || null,

@@ -21,6 +21,11 @@ interface QuoteLineItem {
   product: Product
 }
 
+interface PurchaseOrder {
+  id: string
+  poNumber: string
+}
+
 interface Quote {
   id: string
   quoteNumber: string | null
@@ -31,7 +36,9 @@ interface Quote {
   shippingCost: number | null
   notes: string | null
   supplierId: string | null
-  supplier: { id: string; name: string } | null
+  purchaseOrderId: string | null
+  supplier: { id: string; name: string; displayName: string | null } | null
+  purchaseOrder: PurchaseOrder | null
   lineItems: QuoteLineItem[]
 }
 
@@ -42,7 +49,8 @@ export default function QuoteEditPage() {
 
   const [quote, setQuote] = useState<Quote | null>(null)
   const [products, setProducts] = useState<Product[]>([])
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string; displayName: string | null }[]>([])
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -53,6 +61,7 @@ export default function QuoteEditPage() {
     quoteDate: '',
     quoteType: 'production',
     supplierId: '',
+    purchaseOrderId: '',
     pdfUrl: '',
     shippingCost: '',
     notes: '',
@@ -73,6 +82,7 @@ export default function QuoteEditPage() {
     fetchQuote()
     fetchProducts()
     fetchSuppliers()
+    fetchPurchaseOrders()
   }, [quoteId])
 
   async function fetchQuote() {
@@ -90,6 +100,7 @@ export default function QuoteEditPage() {
         quoteDate: data.quoteDate.split('T')[0],
         quoteType: data.quoteType,
         supplierId: data.supplierId || '',
+        purchaseOrderId: data.purchaseOrderId || '',
         pdfUrl: data.pdfUrl || '',
         shippingCost: data.shippingCost?.toString() || '',
         notes: data.notes || '',
@@ -121,6 +132,12 @@ export default function QuoteEditPage() {
     const res = await fetch('/api/suppliers')
     const data = await res.json()
     setSuppliers(data)
+  }
+
+  async function fetchPurchaseOrders() {
+    const res = await fetch('/api/purchase-orders')
+    const data = await res.json()
+    setPurchaseOrders(data.map((po: { id: string; poNumber: string }) => ({ id: po.id, poNumber: po.poNumber })))
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -333,7 +350,23 @@ export default function QuoteEditPage() {
               >
                 <option value="">Select supplier</option>
                 {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>{s.displayName || s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Linked Purchase Order
+              </label>
+              <select
+                value={formData.purchaseOrderId}
+                onChange={(e) => setFormData({ ...formData, purchaseOrderId: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+              >
+                <option value="">None</option>
+                {purchaseOrders.map((po) => (
+                  <option key={po.id} value={po.id}>{po.poNumber}</option>
                 ))}
               </select>
             </div>

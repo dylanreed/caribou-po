@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 interface Supplier {
   id: string
   name: string
+  displayName: string | null
   email: string | null
   phone: string | null
   city: string | null
@@ -97,9 +98,15 @@ export default function SuppliersPage() {
               {suppliers.map((supplier) => (
                 <tr key={supplier.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-medium text-gray-900">
-                      {supplier.name}
-                    </div>
+                    <Link
+                      href={`/suppliers/${supplier.id}/edit`}
+                      className="font-medium text-gray-900 hover:text-maroon-800"
+                    >
+                      {supplier.displayName || supplier.name}
+                    </Link>
+                    {supplier.displayName && (
+                      <p className="text-xs text-gray-500">{supplier.name}</p>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-gray-500">
                     {supplier.email || '-'}

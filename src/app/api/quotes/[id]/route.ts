@@ -11,6 +11,9 @@ export async function GET(
     where: { id: params.id },
     include: {
       supplier: true,
+      purchaseOrder: {
+        select: { id: true, poNumber: true },
+      },
       lineItems: {
         include: {
           product: true,
@@ -32,7 +35,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json()
-    const { quoteNumber, quoteDate, quoteType, supplierId, pdfUrl, shippingCost, notes, lineItems } = body
+    const { quoteNumber, quoteDate, quoteType, supplierId, purchaseOrderId, pdfUrl, shippingCost, notes, lineItems } = body
 
     // Update the quote
     await prisma.quote.update({
@@ -42,6 +45,7 @@ export async function PUT(
         quoteDate: new Date(quoteDate),
         quoteType: quoteType || 'production',
         supplierId: supplierId || null,
+        purchaseOrderId: purchaseOrderId || null,
         pdfUrl: pdfUrl || null,
         shippingCost: shippingCost ? parseFloat(shippingCost) : null,
         notes: notes || null,
@@ -85,6 +89,9 @@ export async function PUT(
       where: { id: params.id },
       include: {
         supplier: true,
+        purchaseOrder: {
+          select: { id: true, poNumber: true },
+        },
         lineItems: {
           include: {
             product: true,

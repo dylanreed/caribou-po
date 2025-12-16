@@ -62,6 +62,7 @@ interface PurchaseOrder {
   receivedAt: string | null
   supplier: {
     name: string
+    displayName: string | null
     email: string | null
     phone: string | null
     address: string | null
@@ -73,20 +74,28 @@ interface PurchaseOrder {
 }
 
 const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-800',
+  PROTOTYPE: 'bg-purple-100 text-purple-800',
+  APPROVED: 'bg-indigo-100 text-indigo-800',
   ORDERED: 'bg-blue-100 text-blue-800',
   IN_PRODUCTION: 'bg-yellow-100 text-yellow-800',
-  RECEIVED: 'bg-green-100 text-green-800',
+  SHIPPED: 'bg-orange-100 text-orange-800',
+  RECEIVED: 'bg-teal-100 text-teal-800',
+  PACKAGED: 'bg-green-100 text-green-800',
+  RELEASED: 'bg-emerald-100 text-emerald-800',
 }
 
 const statusLabels: Record<string, string> = {
-  DRAFT: 'Draft',
+  PROTOTYPE: 'Prototype',
+  APPROVED: 'Approved',
   ORDERED: 'Ordered',
   IN_PRODUCTION: 'In Production',
+  SHIPPED: 'Shipped',
   RECEIVED: 'Received',
+  PACKAGED: 'Packaged',
+  RELEASED: 'Released',
 }
 
-const statusOptions = ['ORDERED', 'IN_PRODUCTION', 'RECEIVED']
+const statusOptions = ['PROTOTYPE', 'APPROVED', 'ORDERED', 'IN_PRODUCTION', 'SHIPPED', 'RECEIVED', 'PACKAGED', 'RELEASED']
 
 function hasSteel(material: string | null | undefined): boolean {
   return material?.includes('Steel') || false
@@ -171,14 +180,12 @@ export default function PurchaseOrderDetailPage({
           </div>
         </div>
         <div className="flex gap-2 items-center">
-          {po.status === 'DRAFT' && (
-            <Link
-              href={`/purchase-orders/${po.id}/edit`}
-              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Edit
-            </Link>
-          )}
+          <Link
+            href={`/purchase-orders/${po.id}/edit`}
+            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Edit
+          </Link>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">Status:</label>
             <select
@@ -333,7 +340,10 @@ export default function PurchaseOrderDetailPage({
           <div className="bg-white shadow rounded-lg p-6">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Supplier</h2>
             <div className="space-y-2">
-              <p className="font-medium text-gray-900">{po.supplier.name}</p>
+              <p className="font-medium text-gray-900">{po.supplier.displayName || po.supplier.name}</p>
+              {po.supplier.displayName && (
+                <p className="text-sm text-gray-500">{po.supplier.name}</p>
+              )}
               {po.supplier.email && (
                 <p className="text-gray-600">{po.supplier.email}</p>
               )}

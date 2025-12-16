@@ -86,58 +86,66 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json()
-  const poNumber = await generatePONumber()
+  try {
+    const body = await request.json()
+    const poNumber = await generatePONumber()
 
-  const purchaseOrder = await prisma.purchaseOrder.create({
-    data: {
-      poNumber,
-      supplierId: body.supplierId,
-      status: 'DRAFT',
-      notes: body.notes || null,
-      lineItems: {
-        create: body.lineItems.map((item: { productId: string; colorId?: string | null; ringColor?: string | null; quantity: number; engravings?: { engravingArtId: string }[] }) => ({
-          productId: item.productId,
-          colorId: item.colorId || null,
-          ringColor: item.ringColor || null,
-          quantity: item.quantity,
-          engravings: item.engravings?.length ? {
-            create: item.engravings.map((eng) => ({
-              engravingArtId: eng.engravingArtId,
-            })),
-          } : undefined,
-        })),
+    const purchaseOrder = await prisma.purchaseOrder.create({
+      data: {
+        poNumber,
+        supplierId: body.supplierId,
+        status: 'PROTOTYPE',
+        notes: body.notes || null,
+        lineItems: {
+          create: body.lineItems.map((item: { productId: string; colorId?: string | null; ringColor?: string | null; quantity: number; engravings?: { engravingArtId: string }[] }) => ({
+            productId: item.productId,
+            colorId: item.colorId || null,
+            ringColor: item.ringColor || null,
+            quantity: item.quantity,
+            engravings: item.engravings?.length ? {
+              create: item.engravings.map((eng) => ({
+                engravingArtId: eng.engravingArtId,
+              })),
+            } : undefined,
+          })),
+        },
       },
-    },
-    include: {
-      supplier: true,
-      lineItems: {
-        include: {
-          product: {
-            include: {
-              engravingArt: {
-                where: { isActive: true },
-                orderBy: { position: 'asc' },
+      include: {
+        supplier: true,
+        lineItems: {
+          include: {
+            product: {
+              include: {
+                engravingArt: {
+                  where: { isActive: true },
+                  orderBy: { position: 'asc' },
+                },
               },
             },
-          },
-          color: {
-            include: {
-              pantoneChips: {
-                include: { pantone: true },
-                orderBy: { orderIndex: 'asc' },
+            color: {
+              include: {
+                pantoneChips: {
+                  include: { pantone: true },
+                  orderBy: { orderIndex: 'asc' },
+                },
               },
             },
-          },
-          engravings: {
-            include: {
-              engravingArt: true,
+            engravings: {
+              include: {
+                engravingArt: true,
+              },
             },
           },
         },
       },
-    },
-  })
+    })
 
-  return NextResponse.json(purchaseOrder, { status: 201 })
+    return NextResponse.json(purchaseOrder, { status: 201 })
+  } catch (error) {
+    console.error('Error creating purchase order:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create purchase order' },
+      { status: 500 }
+    )
+  }
 }

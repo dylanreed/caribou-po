@@ -48,16 +48,19 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const body = await request.json()
+  try {
+    const body = await request.json()
 
-  // Delete existing line items and create new ones
-  await prisma.lineItem.deleteMany({
-    where: { purchaseOrderId: params.id },
-  })
+    // Delete existing line items and create new ones
+    await prisma.lineItem.deleteMany({
+      where: { purchaseOrderId: params.id },
+    })
 
-  const purchaseOrder = await prisma.purchaseOrder.update({
+    const purchaseOrder = await prisma.purchaseOrder.update({
     where: { id: params.id },
     data: {
+      poNumber: body.poNumber || undefined,
+      createdAt: body.createdAt ? new Date(body.createdAt) : undefined,
       supplierId: body.supplierId,
       notes: body.notes || null,
       lineItems: {
@@ -104,7 +107,14 @@ export async function PUT(
     },
   })
 
-  return NextResponse.json(purchaseOrder)
+    return NextResponse.json(purchaseOrder)
+  } catch (error) {
+    console.error('Error updating purchase order:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to update purchase order' },
+      { status: 500 }
+    )
+  }
 }
 
 export async function PATCH(
@@ -114,13 +124,20 @@ export async function PATCH(
   const body = await request.json()
 
   const updateData: Record<string, unknown> = {}
+  const now = new Date()
 
   if (body.status) {
     updateData.status = body.status
     if (body.status === 'ORDERED') {
-      updateData.sentAt = new Date()
+      updateData.sentAt = now
+    } else if (body.status === 'SHIPPED') {
+      updateData.shippedAt = now
     } else if (body.status === 'RECEIVED') {
-      updateData.receivedAt = new Date()
+      updateData.receivedAt = now
+    } else if (body.status === 'PACKAGED') {
+      updateData.packagedAt = now
+    } else if (body.status === 'RELEASED') {
+      updateData.releasedAt = now
     }
   }
 
@@ -156,6 +173,15 @@ export async function PATCH(
       },
     },
   })
+
+  // When status changes to RELEASED, update lastReleasedAt for all products in the PO
+  if (body.status === 'RELEASED') {
+    const productIds = purchaseOrder.lineItems.map(item => item.productId)
+    await prisma.product.updateMany({
+      where: { id: { in: productIds } },
+      data: { lastReleasedAt: now },
+    })
+  }
 
   return NextResponse.json(purchaseOrder)
 }

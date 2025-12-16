@@ -14,6 +14,7 @@ datasource db {
 model Supplier {
   id            String   @id @default(cuid())
   name          String
+  displayName   String?  // Short nickname for display
   email         String?
   phone         String?
   address       String?
@@ -28,26 +29,30 @@ model Supplier {
 
   purchaseOrders PurchaseOrder[]
   quotes         Quote[]
+  products       ProductSupplier[]
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  sku         String   @unique
-  name        String
-  description String?
-  imageUrl    String?
-  unitPrice   Float
-  unit        String   @default("each")
-  category    String?
-  material    String?  // "6061 Aluminum", "7075 Aluminum", "6061 Aluminum + Steel", "7075 Aluminum + Steel", "Wood"
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String    @id @default(cuid())
+  sku            String    @unique
+  name           String
+  description    String?
+  imageUrl       String?
+  unitPrice      Float
+  unit           String    @default("each")
+  category       String?
+  material       String?   // "6061 Aluminum", "7075 Aluminum", "6061 Aluminum + Steel", "7075 Aluminum + Steel", "Wood"
+  isActive       Boolean   @default(true)
+  lastReleasedAt DateTime? // When the most recent PO containing this product was released
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   lineItems      LineItem[]
   engravingArt   EngravingArt[]
   quotes         ProductQuote[]
   quoteLineItems QuoteLineItem[]
+  retailProducts RetailProduct[]
+  suppliers      ProductSupplier[]
 }
 
 model ProductQuote {
@@ -69,20 +74,22 @@ model ProductQuote {
 }
 
 model Quote {
-  id          String   @id @default(cuid())
-  quoteNumber String?
-  quoteDate   DateTime
-  quoteType   String   @default("production") // "prototype" or "production"
-  supplierId  String?
-  pdfUrl      String?
-  totalCost   Float?
-  shippingCost Float?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  quoteNumber     String?
+  quoteDate       DateTime
+  quoteType       String   @default("production") // "prototype" or "production"
+  supplierId      String?
+  purchaseOrderId String?  // Link to related PO
+  pdfUrl          String?
+  totalCost       Float?
+  shippingCost    Float?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  supplier   Supplier?   @relation(fields: [supplierId], references: [id])
-  lineItems  QuoteLineItem[]
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  lineItems     QuoteLineItem[]
 }
 
 model QuoteLineItem {
@@ -116,15 +123,19 @@ model PurchaseOrder {
   id         String    @id @default(cuid())
   poNumber   String    @unique
   supplierId String
-  status     String    @default("DRAFT")
+  status     String    @default("DRAFT")  // PROTOTYPE, APPROVED, ORDERED, IN_PRODUCTION, SHIPPED, RECEIVED, PACKAGED, RELEASED
   notes      String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   sentAt     DateTime?
+  shippedAt  DateTime?
   receivedAt DateTime?
+  packagedAt DateTime?
+  releasedAt DateTime?
 
   supplier  Supplier   @relation(fields: [supplierId], references: [id])
   lineItems LineItem[]
+  quotes    Quote[]    // Related quotes for this PO
 }
 
 model LineItem {
@@ -204,4 +215,61 @@ model ColorPantone {
   pantone PantoneChip @relation(fields: [pantoneId], references: [id], onDelete: Cascade)
 
   @@unique([colorId, pantoneId])
+}
+
+// Retail inventory tracking
+model Retailer {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  baseUrl   String   // e.g., "yoyoexpert.com"
+  logoUrl   String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  retailProducts RetailProduct[]
+}
+
+model RetailProduct {
+  id           String   @id @default(cuid())
+  productId    String
+  retailerId   String
+  productUrl   String   // Full URL to product page
+  productHandle String? // Shopify product handle extracted from URL
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  retailer  Retailer  @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+  snapshots InventorySnapshot[]
+
+  @@unique([productId, retailerId])
+}
+
+model InventorySnapshot {
+  id              String   @id @default(cuid())
+  retailProductId String
+  totalInventory  Int      // Sum of all variant quantities
+  variantData     String   // JSON string of variant-level inventory
+  fetchedAt       DateTime @default(now())
+
+  retailProduct RetailProduct @relation(fields: [retailProductId], references: [id], onDelete: Cascade)
+
+  @@index([retailProductId, fetchedAt])
+}
+
+// Junction table for products and their suppliers
+model ProductSupplier {
+  id         String   @id @default(cuid())
+  productId  String
+  supplierId String
+  isPrimary  Boolean  @default(false)  // Mark the main supplier for this product
+  createdAt  DateTime @default(now())
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, supplierId])
 }

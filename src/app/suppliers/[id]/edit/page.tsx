@@ -19,6 +19,7 @@ export default async function EditSupplierPage({ params }: EditSupplierPageProps
   const formData = {
     id: supplier.id,
     name: supplier.name,
+    displayName: supplier.displayName || '',
     email: supplier.email || '',
     phone: supplier.phone || '',
     address: supplier.address || '',

@@ -208,9 +208,11 @@ export default function ColorsPage() {
                 )}
               </div>
               <div className="p-3">
-                <h3 className="font-medium text-gray-900 text-sm truncate">
-                  {color.name}
-                </h3>
+                <Link href={`/colors/${color.id}/edit`}>
+                  <h3 className="font-medium text-gray-900 text-sm truncate hover:text-maroon-800 cursor-pointer">
+                    {color.name}
+                  </h3>
+                </Link>
                 {color.tags.length > 0 ? (
                   <div className="flex flex-wrap gap-1 mt-1">
                     {color.tags.map((tag) => (

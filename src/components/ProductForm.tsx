@@ -21,6 +21,40 @@ interface ProductQuote {
   notes: string | null
 }
 
+interface InventorySnapshot {
+  totalInventory: number
+  variantData: string
+  fetchedAt: string
+}
+
+interface RetailProduct {
+  id: string
+  retailerId: string
+  retailerName: string
+  productUrl: string
+  latestSnapshot: InventorySnapshot | null
+}
+
+interface Retailer {
+  id: string
+  name: string
+  baseUrl: string
+}
+
+interface ProductSupplier {
+  id: string
+  supplierId: string
+  supplierName: string
+  supplierFullName: string
+  isPrimary: boolean
+}
+
+interface Supplier {
+  id: string
+  name: string
+  displayName: string | null
+}
+
 interface ProductFormProps {
   initialData?: {
     id?: string
@@ -33,8 +67,13 @@ interface ProductFormProps {
     category: string
     material: string
     isActive: boolean
+    lastReleasedAt?: string | null
     engravingArt?: EngravingArt[]
     quotes?: ProductQuote[]
+    retailProducts?: RetailProduct[]
+    retailers?: Retailer[]
+    productSuppliers?: ProductSupplier[]
+    allSuppliers?: Supplier[]
   }
 }
 
@@ -83,6 +122,21 @@ export function ProductForm({ initialData }: ProductFormProps) {
   const [newQuote, setNewQuote] = useState({ quoteDate: new Date().toISOString().split('T')[0], unitPrice: '', notes: '' })
   const [savingQuote, setSavingQuote] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  // Retail links state
+  const [retailProducts, setRetailProducts] = useState<RetailProduct[]>(initialData?.retailProducts || [])
+  const [retailers] = useState<Retailer[]>(initialData?.retailers || [])
+  const [showRetailForm, setShowRetailForm] = useState(false)
+  const [newRetailLink, setNewRetailLink] = useState({ retailerId: '', productUrl: '' })
+  const [savingRetailLink, setSavingRetailLink] = useState(false)
+  const [refreshingInventory, setRefreshingInventory] = useState<string | null>(null)
+
+  // Suppliers state
+  const [productSuppliers, setProductSuppliers] = useState<ProductSupplier[]>(initialData?.productSuppliers || [])
+  const [allSuppliers] = useState<Supplier[]>(initialData?.allSuppliers || [])
+  const [showSupplierForm, setShowSupplierForm] = useState(false)
+  const [newSupplierLink, setNewSupplierLink] = useState({ supplierId: '', isPrimary: false })
+  const [savingSupplierLink, setSavingSupplierLink] = useState(false)
 
   const isEditing = !!initialData?.id
   const clearSuccessMessage = useCallback(() => setSuccessMessage(null), [])
@@ -334,6 +388,202 @@ export function ProductForm({ initialData }: ProductFormProps) {
     }
   }
 
+  // Retail link functions
+  async function handleAddRetailLink() {
+    if (!newRetailLink.retailerId || !newRetailLink.productUrl) {
+      alert('Please select a retailer and enter a product URL')
+      return
+    }
+
+    setSavingRetailLink(true)
+    try {
+      const res = await fetch('/api/retail-products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: initialData?.id,
+          retailerId: newRetailLink.retailerId,
+          productUrl: newRetailLink.productUrl,
+        }),
+      })
+
+      const result = await res.json()
+      if (result.id) {
+        const retailer = retailers.find(r => r.id === newRetailLink.retailerId)
+        setRetailProducts([...retailProducts, {
+          id: result.id,
+          retailerId: newRetailLink.retailerId,
+          retailerName: retailer?.name || 'Unknown',
+          productUrl: newRetailLink.productUrl,
+          latestSnapshot: null,
+        }])
+        setNewRetailLink({ retailerId: '', productUrl: '' })
+        setShowRetailForm(false)
+        setSuccessMessage('Retail link added successfully!')
+      } else {
+        alert('Failed to add retail link')
+      }
+    } catch {
+      alert('Failed to add retail link')
+    }
+    setSavingRetailLink(false)
+  }
+
+  async function handleDeleteRetailLink(retailProductId: string) {
+    if (!confirm('Delete this retail link?')) return
+
+    try {
+      await fetch(`/api/retail-products/${retailProductId}`, {
+        method: 'DELETE',
+      })
+      setRetailProducts(retailProducts.filter(rp => rp.id !== retailProductId))
+    } catch {
+      alert('Failed to delete retail link')
+    }
+  }
+
+  async function handleRefreshInventory(retailProductId: string) {
+    setRefreshingInventory(retailProductId)
+    try {
+      const res = await fetch('/api/retail-inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retailProductIds: [retailProductId] }),
+      })
+
+      const result = await res.json()
+      if (result.results?.[0]?.success) {
+        const inventoryResult = result.results[0]
+        setRetailProducts(retailProducts.map(rp => {
+          if (rp.id === retailProductId) {
+            return {
+              ...rp,
+              latestSnapshot: {
+                totalInventory: inventoryResult.totalInventory,
+                variantData: JSON.stringify(inventoryResult.variants),
+                fetchedAt: new Date().toISOString(),
+              },
+            }
+          }
+          return rp
+        }))
+        setSuccessMessage(`Inventory updated: ${inventoryResult.totalInventory} units total`)
+      } else {
+        alert('Failed to fetch inventory')
+      }
+    } catch {
+      alert('Failed to refresh inventory')
+    }
+    setRefreshingInventory(null)
+  }
+
+  async function handleRefreshAllInventory() {
+    if (retailProducts.length === 0) return
+
+    setRefreshingInventory('all')
+    try {
+      const res = await fetch('/api/retail-inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retailProductIds: retailProducts.map(rp => rp.id) }),
+      })
+
+      const result = await res.json()
+      if (result.results) {
+        const updatedProducts = retailProducts.map(rp => {
+          const inventoryResult = result.results.find((r: { retailProductId: string }) => r.retailProductId === rp.id)
+          if (inventoryResult?.success) {
+            return {
+              ...rp,
+              latestSnapshot: {
+                totalInventory: inventoryResult.totalInventory,
+                variantData: JSON.stringify(inventoryResult.variants),
+                fetchedAt: new Date().toISOString(),
+              },
+            }
+          }
+          return rp
+        })
+        setRetailProducts(updatedProducts)
+        setSuccessMessage(`Refreshed inventory for ${result.refreshed} retailer(s)`)
+      }
+    } catch {
+      alert('Failed to refresh inventory')
+    }
+    setRefreshingInventory(null)
+  }
+
+  // Supplier functions
+  async function handleAddSupplier() {
+    if (!newSupplierLink.supplierId) {
+      alert('Please select a supplier')
+      return
+    }
+
+    setSavingSupplierLink(true)
+    try {
+      const res = await fetch(`/api/products/${initialData?.id}/suppliers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSupplierLink),
+      })
+
+      const result = await res.json()
+      if (result.id) {
+        // If this was set as primary, update all others to non-primary
+        let updatedSuppliers = productSuppliers
+        if (newSupplierLink.isPrimary) {
+          updatedSuppliers = productSuppliers.map(ps => ({ ...ps, isPrimary: false }))
+        }
+        setProductSuppliers([...updatedSuppliers, {
+          id: result.id,
+          supplierId: result.supplierId,
+          supplierName: result.supplier.displayName || result.supplier.name,
+          supplierFullName: result.supplier.name,
+          isPrimary: result.isPrimary,
+        }])
+        setNewSupplierLink({ supplierId: '', isPrimary: false })
+        setShowSupplierForm(false)
+        setSuccessMessage('Supplier added successfully!')
+      } else {
+        alert('Failed to add supplier')
+      }
+    } catch {
+      alert('Failed to add supplier')
+    }
+    setSavingSupplierLink(false)
+  }
+
+  async function handleRemoveSupplier(supplierId: string) {
+    if (!confirm('Remove this supplier from the product?')) return
+
+    try {
+      await fetch(`/api/products/${initialData?.id}/suppliers/${supplierId}`, {
+        method: 'DELETE',
+      })
+      setProductSuppliers(productSuppliers.filter(ps => ps.supplierId !== supplierId))
+    } catch {
+      alert('Failed to remove supplier')
+    }
+  }
+
+  async function handleSetPrimarySupplier(supplierId: string) {
+    try {
+      await fetch(`/api/products/${initialData?.id}/suppliers/${supplierId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPrimary: true }),
+      })
+      setProductSuppliers(productSuppliers.map(ps => ({
+        ...ps,
+        isPrimary: ps.supplierId === supplierId,
+      })))
+      setSuccessMessage('Primary supplier updated!')
+    } catch {
+      alert('Failed to update primary supplier')
+    }
+  }
+
   function formatCurrency(amount: number) {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -533,17 +783,48 @@ export function ProductForm({ initialData }: ProductFormProps) {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Material
             </label>
-            <select
-              name="material"
-              value={formData.material}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
-            >
-              <option value="">Select material</option>
-              {MATERIALS.map((mat) => (
-                <option key={mat} value={mat}>{mat}</option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={MATERIALS.includes(formData.material) ? formData.material : '_custom'}
+                onChange={(e) => {
+                  if (e.target.value === '_custom') {
+                    // Keep current custom value or clear
+                    if (MATERIALS.includes(formData.material)) {
+                      setFormData({ ...formData, material: '' })
+                    }
+                  } else {
+                    setFormData({ ...formData, material: e.target.value })
+                  }
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+              >
+                <option value="">Select material</option>
+                {MATERIALS.map((mat) => (
+                  <option key={mat} value={mat}>{mat}</option>
+                ))}
+                <option value="_custom">Other (custom)...</option>
+              </select>
+              {(!MATERIALS.includes(formData.material) && formData.material !== '') && (
+                <input
+                  type="text"
+                  name="material"
+                  value={formData.material}
+                  onChange={handleChange}
+                  placeholder="Enter custom material"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+                />
+              )}
+            </div>
+            {!MATERIALS.includes(formData.material) && formData.material === '' && (
+              <input
+                type="text"
+                name="material"
+                value={formData.material}
+                onChange={handleChange}
+                placeholder="Enter custom material"
+                className="w-full mt-2 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+              />
+            )}
           </div>
 
           <div className="flex items-center">
@@ -559,8 +840,139 @@ export function ProductForm({ initialData }: ProductFormProps) {
               Active (available for purchase orders)
             </label>
           </div>
+
+          {/* Last Released Date - Show when editing and has release date */}
+          {isEditing && initialData?.lastReleasedAt && (
+            <div className="md:col-span-2 bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-medium text-green-800">
+                  Last Released: {formatDate(initialData.lastReleasedAt)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-green-700 ml-7">
+                This product was most recently released from a purchase order on this date.
+              </p>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Suppliers Section - Only show when editing */}
+      {isEditing && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-lg font-medium text-gray-900">Suppliers</h2>
+              <p className="text-sm text-gray-500">Factories that manufacture this product</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSupplierForm(!showSupplierForm)}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md font-medium transition-colors"
+            >
+              {showSupplierForm ? 'Cancel' : 'Add Supplier'}
+            </button>
+          </div>
+
+          {showSupplierForm && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Supplier *
+                  </label>
+                  <select
+                    value={newSupplierLink.supplierId}
+                    onChange={(e) => setNewSupplierLink({ ...newSupplierLink, supplierId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+                  >
+                    <option value="">Select supplier</option>
+                    {allSuppliers
+                      .filter(s => !productSuppliers.some(ps => ps.supplierId === s.id))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.displayName || s.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="isPrimary"
+                    checked={newSupplierLink.isPrimary}
+                    onChange={(e) => setNewSupplierLink({ ...newSupplierLink, isPrimary: e.target.checked })}
+                    className="h-4 w-4 text-maroon-800 focus:ring-caramel-600 border-gray-300 rounded"
+                  />
+                  <label htmlFor="isPrimary" className="ml-2 text-sm text-gray-700">
+                    Primary supplier
+                  </label>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddSupplier}
+                  disabled={savingSupplierLink || !newSupplierLink.supplierId}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors disabled:opacity-50"
+                >
+                  {savingSupplierLink ? 'Saving...' : 'Add Supplier'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {productSuppliers.length === 0 ? (
+            <p className="text-gray-500 text-sm">No suppliers linked to this product yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {productSuppliers.map((ps) => (
+                <div
+                  key={ps.supplierId}
+                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                    ps.isPrimary ? 'bg-maroon-50 border-maroon-200' : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <span className="font-medium text-gray-900">{ps.supplierName}</span>
+                      {ps.supplierName !== ps.supplierFullName && (
+                        <span className="text-xs text-gray-500 ml-2">({ps.supplierFullName})</span>
+                      )}
+                      {ps.isPrimary && (
+                        <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-maroon-100 text-maroon-800">
+                          Primary
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {!ps.isPrimary && (
+                      <button
+                        type="button"
+                        onClick={() => handleSetPrimarySupplier(ps.supplierId)}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        Set Primary
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSupplier(ps.supplierId)}
+                      className="text-xs text-red-600 hover:text-red-800"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Engraving Art Section - Only show when editing */}
       {isEditing && (
@@ -891,6 +1303,170 @@ export function ProductForm({ initialData }: ProductFormProps) {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Retail Links Section - Only show when editing */}
+      {isEditing && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-lg font-medium text-gray-900">Retail Inventory Tracking</h2>
+              <p className="text-sm text-gray-500">Track inventory levels at retail partners</p>
+            </div>
+            <div className="flex gap-2">
+              {retailProducts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRefreshAllInventory}
+                  disabled={refreshingInventory === 'all'}
+                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md font-medium transition-colors disabled:opacity-50"
+                >
+                  {refreshingInventory === 'all' ? 'Refreshing...' : 'Refresh All'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowRetailForm(!showRetailForm)}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md font-medium transition-colors"
+              >
+                {showRetailForm ? 'Cancel' : 'Add Retailer Link'}
+              </button>
+            </div>
+          </div>
+
+          {showRetailForm && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Retailer *
+                  </label>
+                  <select
+                    value={newRetailLink.retailerId}
+                    onChange={(e) => setNewRetailLink({ ...newRetailLink, retailerId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+                  >
+                    <option value="">Select retailer</option>
+                    {retailers
+                      .filter(r => !retailProducts.some(rp => rp.retailerId === r.id))
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                  </select>
+                  {retailers.length === 0 && (
+                    <p className="text-xs text-orange-600 mt-1">
+                      No retailers configured. <a href="/retailers" className="underline">Add retailers first</a>
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Product URL *
+                  </label>
+                  <input
+                    type="url"
+                    value={newRetailLink.productUrl}
+                    onChange={(e) => setNewRetailLink({ ...newRetailLink, productUrl: e.target.value })}
+                    placeholder="https://yoyoexpert.com/products/..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddRetailLink}
+                  disabled={savingRetailLink || !newRetailLink.retailerId || !newRetailLink.productUrl}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-colors disabled:opacity-50"
+                >
+                  {savingRetailLink ? 'Saving...' : 'Add Link'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {retailProducts.length === 0 ? (
+            <p className="text-gray-500 text-sm">No retail links added yet. Add links to track inventory at your retail partners.</p>
+          ) : (
+            <div className="space-y-3">
+              {retailProducts.map((rp) => {
+                const variants = rp.latestSnapshot ? JSON.parse(rp.latestSnapshot.variantData) : []
+                return (
+                  <div key={rp.id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{rp.retailerName}</span>
+                          {rp.latestSnapshot && (
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                              rp.latestSnapshot.totalInventory > 0
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {rp.latestSnapshot.totalInventory} units
+                            </span>
+                          )}
+                        </div>
+                        <a
+                          href={rp.productUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:text-blue-800 truncate block max-w-md"
+                        >
+                          {rp.productUrl}
+                        </a>
+                        {rp.latestSnapshot && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            Last updated: {formatDate(rp.latestSnapshot.fetchedAt)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleRefreshInventory(rp.id)}
+                          disabled={refreshingInventory === rp.id}
+                          className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                        >
+                          {refreshingInventory === rp.id ? 'Refreshing...' : 'Refresh'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRetailLink(rp.id)}
+                          className="text-xs text-red-600 hover:text-red-800"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Variant breakdown */}
+                    {variants.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs font-medium text-gray-500 mb-2">Variant Inventory:</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                          {variants.map((v: { id: number; title: string; quantity: number; available: boolean }) => (
+                            <div
+                              key={v.id}
+                              className={`text-xs px-2 py-1 rounded ${
+                                v.quantity > 0
+                                  ? 'bg-green-50 text-green-800'
+                                  : 'bg-gray-50 text-gray-500'
+                              }`}
+                            >
+                              <span className="font-medium">{v.title}</span>
+                              <span className="ml-1">({v.quantity})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

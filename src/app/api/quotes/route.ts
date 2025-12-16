@@ -7,6 +7,9 @@ export async function GET() {
   const quotes = await prisma.quote.findMany({
     include: {
       supplier: true,
+      purchaseOrder: {
+        select: { id: true, poNumber: true },
+      },
       lineItems: {
         include: {
           product: true,

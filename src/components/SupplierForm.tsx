@@ -7,6 +7,7 @@ interface SupplierFormProps {
   initialData?: {
     id?: string
     name: string
+    displayName: string
     email: string
     phone: string
     address: string
@@ -21,6 +22,7 @@ interface SupplierFormProps {
 
 const defaultData = {
   name: '',
+  displayName: '',
   email: '',
   phone: '',
   address: '',
@@ -67,7 +69,7 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
   return (
     <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="md:col-span-2">
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Company Name *
           </label>
@@ -77,6 +79,20 @@ export function SupplierForm({ initialData }: SupplierFormProps) {
             required
             value={formData.name}
             onChange={handleChange}
+            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Display Name
+          </label>
+          <input
+            type="text"
+            name="displayName"
+            value={formData.displayName}
+            onChange={handleChange}
+            placeholder="Short nickname for display"
             className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-caramel-600"
           />
         </div>

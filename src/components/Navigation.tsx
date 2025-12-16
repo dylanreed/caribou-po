@@ -12,6 +12,7 @@ const navItems = [
   { href: '/products', label: 'Products' },
   { href: '/colors', label: 'Colors' },
   { href: '/pantone', label: 'Pantone' },
+  { href: '/retailers', label: 'Retailers' },
 ]
 
 export function Navigation() {
