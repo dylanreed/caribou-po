@@ -7,15 +7,17 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 function createPrismaClient(): PrismaClient {
-  // In production (Vercel), always use Turso
   const tursoUrl = process.env.TURSO_DATABASE_URL
-    || 'libsql://caribou-po-unklesteve.aws-us-east-2.turso.io'
-
   const tursoToken = process.env.TURSO_AUTH_TOKEN
-    || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjUxMjE3NDIsImlkIjoiZWJlMDc3ODMtNjViOS00M2M2LWEyODgtYWQwNDlhYjQyNDlkIiwicmlkIjoiNjljMWQyMzYtOWE5MS00NWE3LTk2ZmMtMmU2MmViMmJlNDNlIn0.737EYWRmmODxVLo1tCYggLj6BrAZ0Tb8mRVw1BjfGF0NGWJ2mGyhxRGkEsqoPqe3I5j9MUOlhDNj-akdvJBNBg'
 
-  // For local dev, use SQLite
-  if (process.env.NODE_ENV !== 'production' && !process.env.TURSO_DATABASE_URL) {
+  // For local dev without Turso credentials, use SQLite
+  if (!tursoUrl || !tursoToken) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'Missing required database credentials: TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set in production'
+      )
+    }
+    // Local development fallback to SQLite
     return new PrismaClient()
   }
 

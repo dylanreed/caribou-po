@@ -1,96 +1,119 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
+import { quoteCreateSchema } from '@/lib/validations'
+import { handleApiError } from '@/lib/api-utils'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const quotes = await prisma.quote.findMany({
-    include: {
-      supplier: true,
-      purchaseOrder: {
-        select: { id: true, poNumber: true },
-      },
-      lineItems: {
-        include: {
-          product: true,
-        },
-      },
-    },
-    orderBy: { quoteDate: 'desc' },
-  })
-  return NextResponse.json(quotes)
-}
-
-export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { quoteNumber, quoteDate, quoteType, supplierId, pdfUrl, totalCost, shippingCost, notes, lineItems } = body
-
-    const quote = await prisma.quote.create({
-      data: {
-        quoteNumber,
-        quoteDate: new Date(quoteDate),
-        quoteType: quoteType || 'production',
-        supplierId: supplierId || null,
-        pdfUrl,
-        totalCost: totalCost ? parseFloat(totalCost) : null,
-        shippingCost: shippingCost ? parseFloat(shippingCost) : null,
-        notes,
-        lineItems: lineItems ? {
-          create: lineItems.map((item: { productId: string; quantity: number; unitCost: number; totalCost: number; notes?: string }) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            unitCost: item.unitCost,
-            totalCost: item.totalCost,
-            notes: item.notes,
-          })),
-        } : undefined,
-      },
+    const quotes = await prisma.quote.findMany({
       include: {
         supplier: true,
+        purchaseOrder: {
+          select: { id: true, poNumber: true },
+        },
         lineItems: {
           include: {
             product: true,
           },
         },
       },
+      orderBy: { quoteDate: 'desc' },
     })
+    return NextResponse.json(quotes)
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
 
-    // Update product quotes for each line item
-    if (lineItems && lineItems.length > 0) {
-      const isProduction = (quoteType || 'production') === 'production'
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const validated = quoteCreateSchema.parse(body)
 
-      for (const item of lineItems) {
-        const calculatedUnitCost = (item.totalCost + (shippingCost ? parseFloat(shippingCost) / lineItems.length : 0)) / item.quantity
+    const { quoteNumber, quoteDate, quoteType, supplierId, pdfUrl, totalCost, shippingCost, notes, lineItems } = validated
 
-        await prisma.productQuote.create({
-          data: {
-            productId: item.productId,
-            quoteDate: new Date(quoteDate),
-            quoteType: quoteType || 'production',
-            unitPrice: calculatedUnitCost,
-            totalCost: item.totalCost,
-            shippingCost: shippingCost ? parseFloat(shippingCost) / lineItems.length : null,
-            quantity: item.quantity,
-            pdfUrl,
-            notes: item.notes,
+    // Use transaction to create quote and update products atomically
+    const quote = await prisma.$transaction(async (tx) => {
+      // Create the quote with line items
+      const newQuote = await tx.quote.create({
+        data: {
+          quoteNumber,
+          quoteDate: new Date(quoteDate),
+          quoteType: quoteType || 'production',
+          supplierId: supplierId || null,
+          pdfUrl: pdfUrl || null,
+          totalCost: totalCost ?? null,
+          shippingCost: shippingCost ?? null,
+          notes: notes || null,
+          lineItems: lineItems ? {
+            create: lineItems.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitCost: item.unitCost,
+              totalCost: item.totalCost,
+              notes: item.notes || null,
+            })),
+          } : undefined,
+        },
+        include: {
+          supplier: true,
+          lineItems: {
+            include: {
+              product: true,
+            },
           },
+        },
+      })
+
+      // Batch create ProductQuotes and update products
+      if (lineItems && lineItems.length > 0) {
+        const isProduction = (quoteType || 'production') === 'production'
+        const shippingPerItem = shippingCost ? shippingCost / lineItems.length : 0
+
+        // Create all ProductQuotes in batch
+        await tx.productQuote.createMany({
+          data: lineItems.map((item) => {
+            const calculatedUnitCost = item.quantity > 0
+              ? (item.totalCost + shippingPerItem) / item.quantity
+              : 0
+            return {
+              productId: item.productId,
+              quoteDate: new Date(quoteDate),
+              quoteType: quoteType || 'production',
+              unitPrice: calculatedUnitCost,
+              totalCost: item.totalCost,
+              shippingCost: shippingPerItem || null,
+              quantity: item.quantity,
+              pdfUrl: pdfUrl || null,
+              notes: item.notes || null,
+            }
+          }),
         })
 
-        // Only update product's current price for production quotes
+        // Only update product prices for production quotes
         if (isProduction) {
-          await prisma.product.update({
-            where: { id: item.productId },
-            data: { unitPrice: calculatedUnitCost },
-          })
+          // Update all products in parallel within the transaction
+          await Promise.all(
+            lineItems.map((item) => {
+              const calculatedUnitCost = item.quantity > 0
+                ? (item.totalCost + shippingPerItem) / item.quantity
+                : 0
+              return tx.product.update({
+                where: { id: item.productId },
+                data: { unitPrice: calculatedUnitCost },
+              })
+            })
+          )
         }
       }
-    }
+
+      return newQuote
+    })
 
     return NextResponse.json(quote)
   } catch (error) {
-    console.error('Error creating quote:', error)
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return handleApiError(error)
   }
 }

@@ -30,6 +30,8 @@ model Supplier {
   purchaseOrders PurchaseOrder[]
   quotes         Quote[]
   products       ProductSupplier[]
+
+  @@index([name])
 }
 
 model Product {
@@ -53,6 +55,9 @@ model Product {
   quoteLineItems QuoteLineItem[]
   retailProducts RetailProduct[]
   suppliers      ProductSupplier[]
+
+  @@index([name])
+  @@index([isActive])
 }
 
 model ProductQuote {
@@ -90,6 +95,9 @@ model Quote {
   supplier      Supplier?      @relation(fields: [supplierId], references: [id])
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
   lineItems     QuoteLineItem[]
+
+  @@index([supplierId])
+  @@index([quoteDate])
 }
 
 model QuoteLineItem {
@@ -136,6 +144,9 @@ model PurchaseOrder {
   supplier  Supplier   @relation(fields: [supplierId], references: [id])
   lineItems LineItem[]
   quotes    Quote[]    // Related quotes for this PO
+
+  @@index([status])
+  @@index([supplierId])
 }
 
 model LineItem {
@@ -184,6 +195,8 @@ model YoyoColor {
   pantoneChips ColorPantone[]
   lineItems    LineItem[]
   tags         ColorTag[]
+
+  @@index([isActive])
 }
 
 model ColorTag {

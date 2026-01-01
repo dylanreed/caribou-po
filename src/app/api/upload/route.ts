@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
+import { handleApiError, ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE } from '@/lib/api-utils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+const VALID_FOLDERS = ['colors', 'products', 'engraving', 'quotes']
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,16 +15,46 @@ export async function POST(request: NextRequest) {
 
     if (!file) {
       return NextResponse.json(
-        { success: false, error: 'No file provided' },
+        { error: { message: 'No file provided', code: 'NO_FILE' } },
         { status: 400 }
       )
     }
 
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
-    if (!validTypes.includes(file.type)) {
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { success: false, error: 'Invalid file type. Use JPEG, PNG, GIF, WebP, or PDF.' },
+        {
+          error: {
+            message: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+            code: 'FILE_TOO_LARGE'
+          }
+        },
+        { status: 413 }
+      )
+    }
+
+    // Validate file type
+    if (!ALLOWED_CONTENT_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        {
+          error: {
+            message: 'Invalid file type. Allowed: JPEG, PNG, GIF, WebP, PDF',
+            code: 'INVALID_FILE_TYPE'
+          }
+        },
+        { status: 400 }
+      )
+    }
+
+    // Validate folder
+    if (!VALID_FOLDERS.includes(folder)) {
+      return NextResponse.json(
+        {
+          error: {
+            message: `Invalid folder. Allowed: ${VALID_FOLDERS.join(', ')}`,
+            code: 'INVALID_FOLDER'
+          }
+        },
         { status: 400 }
       )
     }
@@ -47,11 +80,6 @@ export async function POST(request: NextRequest) {
       filename: blob.pathname,
     })
   } catch (error) {
-    console.error('Upload error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { success: false, error: `Upload failed: ${errorMessage}` },
-      { status: 500 }
-    )
+    return handleApiError(error)
   }
 }

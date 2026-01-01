@@ -15,8 +15,14 @@ const { createClient } = require('@libsql/client');
 const fs = require('fs');
 const path = require('path');
 
-const TURSO_URL = 'libsql://caribou-po-unklesteve.aws-us-east-2.turso.io';
-const TURSO_TOKEN = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjUxMjE3NDIsImlkIjoiZWJlMDc3ODMtNjViOS00M2M2LWEyODgtYWQwNDlhYjQyNDlkIiwicmlkIjoiNjljMWQyMzYtOWE5MS00NWE3LTk2ZmMtMmU2MmViMmJlNDNlIn0.737EYWRmmODxVLo1tCYggLj6BrAZ0Tb8mRVw1BjfGF0NGWJ2mGyhxRGkEsqoPqe3I5j9MUOlhDNj-akdvJBNBg';
+const TURSO_URL = process.env.TURSO_DATABASE_URL;
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN;
+
+if (!TURSO_URL || !TURSO_TOKEN) {
+  console.error('Error: TURSO_DATABASE_URL and TURSO_AUTH_TOKEN environment variables must be set');
+  console.error('Example: TURSO_DATABASE_URL=libsql://your-db.turso.io TURSO_AUTH_TOKEN=your-token node scripts/push-to-turso.js');
+  process.exit(1);
+}
 
 const client = createClient({
   url: TURSO_URL,

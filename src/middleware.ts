@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// Basic Auth credentials - change these!
-const VALID_USERNAME = process.env.BASIC_AUTH_USER || 'caribou'
-const VALID_PASSWORD = process.env.BASIC_AUTH_PASSWORD || 'lodge2024'
+// Basic Auth credentials - must be set via environment variables
+const VALID_USERNAME = process.env.BASIC_AUTH_USER
+const VALID_PASSWORD = process.env.BASIC_AUTH_PASSWORD
 
 export function middleware(request: NextRequest) {
+  // Require credentials to be configured
+  if (!VALID_USERNAME || !VALID_PASSWORD) {
+    console.error('BASIC_AUTH_USER and BASIC_AUTH_PASSWORD must be set in environment variables')
+    return new NextResponse('Server configuration error', { status: 500 })
+  }
+
   const authHeader = request.headers.get('authorization')
 
   if (authHeader) {
